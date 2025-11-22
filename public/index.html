@@ -1,0 +1,177 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TinyLink — Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <div class="max-w-5xl mx-auto p-6">
+    <header class="mb-6">
+      <h1 class="text-2xl font-semibold">TinyLink</h1>
+      <p class="text-sm text-slate-600">Create and manage short links</p>
+    </header>
+
+    <section class="bg-white p-4 rounded shadow mb-6">
+      <form id="createForm" class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+        <div>
+          <label class="text-sm">Long URL</label>
+          <input id="longUrl" required class="w-full border rounded px-3 py-2" placeholder="https://example.com/very/long/url" />
+          <p id="longUrlErr" class="text-xs text-red-600 mt-1 hidden"></p>
+        </div>
+        <div>
+          <label class="text-sm">Custom code (optional)</label>
+          <input id="customCode" class="w-full border rounded px-3 py-2" placeholder="6-8 alphanumeric chars" />
+          <p id="codeErr" class="text-xs text-red-600 mt-1 hidden"></p>
+        </div>
+        <div>
+          <button id="submitBtn" type="submit" class="bg-blue-600 text-white px-4 py-2 rounded">Create</button>
+        </div>
+      </form>
+      <div id="createMsg" class="mt-3"></div>
+    </section>
+
+    <section class="bg-white p-4 rounded shadow">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="font-medium">All Links</h2>
+        <input id="search" placeholder="Search by code or URL" class="border rounded px-3 py-1" />
+      </div>
+
+      <div id="tableWrap" class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr class="text-left">
+              <th class="px-2 py-2">Code</th>
+              <th class="px-2 py-2">Target URL</th>
+              <th class="px-2 py-2">Clicks</th>
+              <th class="px-2 py-2">Last Clicked</th>
+              <th class="px-2 py-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p id="empty" class="text-slate-600 mt-3 hidden">No links yet.</p>
+    </section>
+  </div>
+
+<script>
+const apiBase = '/api/links';
+const rowsEl = document.getElementById('rows');
+const emptyEl = document.getElementById('empty');
+
+async function fetchLinks() {
+  const res = await fetch(apiBase);
+  const data = await res.json();
+  return data;
+}
+
+function fmtDate(d) {
+  if (!d) return '-';
+  const dt = new Date(d);
+  return dt.toLocaleString();
+}
+
+function truncate(s, n=80) {
+  if (!s) return '';
+  return s.length > n ? s.slice(0,n-1) + '…' : s;
+}
+
+async function render() {
+  const data = await fetchLinks();
+  rowsEl.innerHTML = '';
+  if (!data || data.length === 0) {
+    emptyEl.classList.remove('hidden');
+    return;
+  } else {
+    emptyEl.classList.add('hidden');
+  }
+  for (const l of data) {
+    const short = location.origin + '/' + l.code;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="px-2 py-2 align-top"><a class="text-blue-600" href="/code/${l.code}">${l.code}</a></td>
+      <td class="px-2 py-2 align-top"><a href="${l.targetUrl}" target="_blank" class="underline">${truncate(l.targetUrl, 90)}</a></td>
+      <td class="px-2 py-2 align-top">${l.clicks}</td>
+      <td class="px-2 py-2 align-top">${fmtDate(l.lastClickedAt)}</td>
+      <td class="px-2 py-2 align-top">
+        <button data-code="${l.code}" class="copyBtn mr-2 text-sm px-2 py-1 border rounded">Copy</button>
+        <button data-code="${l.code}" class="deleteBtn text-sm px-2 py-1 bg-red-600 text-white rounded">Delete</button>
+      </td>
+    `;
+    rowsEl.appendChild(tr);
+  }
+  attachButtons();
+}
+
+function attachButtons() {
+  document.querySelectorAll('.copyBtn').forEach(btn=>{
+    btn.onclick = async () => {
+      const code = btn.dataset.code;
+      await navigator.clipboard.writeText(location.origin + '/' + code);
+      btn.textContent = 'Copied';
+      setTimeout(()=>btn.textContent='Copy', 1200);
+    };
+  });
+  document.querySelectorAll('.deleteBtn').forEach(btn=>{
+    btn.onclick = async () => {
+      const code = btn.dataset.code;
+      if (!confirm('Delete ' + code + '?')) return;
+      const res = await fetch(apiBase + '/' + code, { method: 'DELETE' });
+      if (res.ok) {
+        render();
+      } else {
+        alert('Delete failed');
+      }
+    };
+  });
+}
+
+document.getElementById('createForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const longUrl = document.getElementById('longUrl').value.trim();
+  const customCode = document.getElementById('customCode').value.trim();
+
+  document.getElementById('longUrlErr').classList.add('hidden');
+  document.getElementById('codeErr').classList.add('hidden');
+
+  const payload = { longUrl };
+  if (customCode) payload.code = customCode;
+
+  const submitBtn = document.getElementById('submitBtn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Creating...';
+
+  const res = await fetch(apiBase, {
+    method: 'POST',
+    headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json();
+  if (res.status === 201) {
+    document.getElementById('createMsg').innerHTML = `<div class="text-green-700">Created: <a class="underline" href="${data.shortUrl}" target="_blank">${data.shortUrl}</a></div>`;
+    document.getElementById('createForm').reset();
+    render();
+  } else {
+    document.getElementById('createMsg').innerHTML = `<div class="text-red-600">${data.error || 'Error'}</div>`;
+  }
+
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Create';
+});
+
+document.getElementById('search').addEventListener('input', (e)=>{
+  const q = e.target.value.toLowerCase();
+  document.querySelectorAll('#rows tr').forEach(tr=>{
+    const text = tr.textContent.toLowerCase();
+    tr.style.display = text.includes(q) ? '' : 'none';
+  });
+});
+
+// initial load
+render();
+</script>
+</body>
+</html>
