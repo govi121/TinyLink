@@ -11,9 +11,5 @@
             "src": "/(.*)",
             "dest": "src/index.js"
         }
-    ],
-    "env": {
-        "DATABASE_URL": "@DATABASE_URL",
-        "BASE_URL": "@BASE_URL"
-    }
+    ]
 }
