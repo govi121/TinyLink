@@ -6,7 +6,7 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "prisma": "prisma",
-    "generate": "prisma generate"
+    "build": "prisma generate && node server.js"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
